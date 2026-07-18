@@ -97,6 +97,22 @@ const SUPABASE_URL = "https://obdhhupzwfdvroeejwji.supabase.co";
 const SUPABASE_KEY = "sb_publishable_UOD2Z3KDcJ8DZTEOeyXqdg_wWySpR4B";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// ฐานข้อมูลของระบบชั่งน้ำหนัก (production-weight) — ใช้ดึงรายละเอียดม้วน
+const PRINT_URL = "https://vmvpnjgwdbbqrszxiapt.supabase.co";
+const PRINT_KEY = "sb_publishable_e0a_DH5j9xZ556jTPsXcqw_gTTEojLU";
+const sbPrint = supabase.createClient(PRINT_URL, PRINT_KEY);
+
+// ดึง UUID ม้วนจากข้อความ QR แล้วอ่านรายละเอียดจากระบบชั่ง
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+async function fetchRollDetail(code){
+  const m = code.match(UUID_RE);
+  if(!m) return null;
+  const {data} = await sbPrint.from("production_rolls")
+    .select("roll_no,lot_no,machine_no,product_name,item_code,weight,customer")
+    .eq("id", m[0]).maybeSingle();
+  return data;
+}
+
 // ===== state =====
 let currentEmp = null;      // {id,name}
 let currentRoll = null;     // {id,roll_code,description}
@@ -159,17 +175,40 @@ function onScan(text){
 async function handleRollCode(code){
   if(!code) return;
   await stopScanner();
+  // ดึงรายละเอียดม้วนจากระบบชั่ง
+  const detail = await fetchRollDetail(code);
   let {data:roll} = await sb.from("rolls").select("*").eq("roll_code",code).maybeSingle();
+  const snap = detail ? {
+    roll_no:detail.roll_no, lot_no:detail.lot_no, machine_no:detail.machine_no,
+    product_name:detail.product_name, item_code:detail.item_code,
+    weight:detail.weight, customer:detail.customer,
+    description:[detail.product_name, detail.lot_no?("Lot "+detail.lot_no):null].filter(Boolean).join(" · ")
+  } : {};
   if(!roll){
-    const {data:created,error} = await sb.from("rolls").insert({roll_code:code}).select().single();
+    const {data:created,error} = await sb.from("rolls").insert({roll_code:code, ...snap}).select().single();
     if(error){ toast("อ่านม้วนไม่สำเร็จ"); startScanner(); return; }
     roll=created;
+  } else if(detail){
+    // อัปเดต snapshot ให้เป็นข้อมูลล่าสุด
+    await sb.from("rolls").update(snap).eq("id",roll.id);
+    Object.assign(roll, snap);
   }
   currentRoll=roll;
-  const isUrl=/^https?:\/\//i.test(roll.roll_code);
+  // แสดงรายละเอียดในหน้ายืนยัน
+  const parts=[];
+  if(roll.roll_no!=null) parts.push("ม้วนที่ "+roll.roll_no);
+  if(roll.product_name) parts.push(roll.product_name);
+  if(roll.lot_no) parts.push("Lot "+roll.lot_no);
+  if(roll.machine_no) parts.push(roll.machine_no);
+  if(roll.weight!=null) parts.push(roll.weight+" kg");
+  if(roll.customer) parts.push(roll.customer);
   const a=$("rollLink");
-  if(isUrl){ a.href=roll.roll_code; a.textContent="ดูข้อมูลม้วน ↗"; a.style.display=""; }
-  else { a.href="#"; a.textContent=roll.roll_code; a.style.pointerEvents="none"; }
+  if(parts.length){ a.textContent=parts.join(" · "); a.style.pointerEvents="none"; a.removeAttribute("href"); }
+  else {
+    const isUrl=/^https?:\/\//i.test(roll.roll_code);
+    if(isUrl){ a.href=roll.roll_code; a.textContent="ดูข้อมูลม้วน ↗"; a.style.pointerEvents=""; }
+    else { a.textContent=roll.roll_code; a.style.pointerEvents="none"; a.removeAttribute("href"); }
+  }
   hide("scanCard"); show("rollCard");
 }
 
@@ -194,17 +233,20 @@ async function loadMine(){
   const ul=$("mine"); ul.innerHTML='<li class="muted">— กำลังโหลด —</li>';
   const since=new Date(); since.setHours(0,0,0,0);
   const {data,error}=await sb.from("roll_events")
-    .select("created_at,rolls(roll_code)")
+    .select("created_at,rolls(roll_code,roll_no,lot_no,machine_no,product_name,weight)")
     .eq("employee_id",currentEmp.id).gte("created_at",since.toISOString())
     .order("created_at",{ascending:false}).limit(100);
   if(error){ ul.innerHTML='<li class="muted">โหลดไม่สำเร็จ</li>'; return; }
   if(!data.length){ ul.innerHTML='<li class="muted">— ยังไม่มี —</li>'; return; }
   ul.innerHTML=data.map(ev=>{
     const t=new Date(ev.created_at).toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"});
-    const code=ev.rolls?.roll_code||"";
-    const isUrl=/^https?:\/\//i.test(code);
-    const label=isUrl?`<a href="${code}" target="_blank" rel="noopener">ดูม้วน ↗</a>`
-                     :`<span>${code}</span>`;
+    const r=ev.rolls||{};
+    const parts=[];
+    if(r.roll_no!=null) parts.push("ม้วน "+r.roll_no);
+    if(r.product_name) parts.push(r.product_name);
+    if(r.lot_no) parts.push("Lot "+r.lot_no);
+    if(r.machine_no) parts.push(r.machine_no);
+    const label=parts.length?parts.join(" · "):(r.roll_code||"");
     return `<li><span class="tag tag-in">กรอ</span><div class="ev-main">
       <div class="emp">${label}</div><div class="time">${t}</div></div></li>`;
   }).join("");

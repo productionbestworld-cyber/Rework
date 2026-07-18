@@ -6,39 +6,42 @@
 <title>สรุปผลงานกรอ — ผู้จัดการ</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
-  :root{--bg:#0f172a;--card:#1e293b;--line:#334155;--txt:#e2e8f0;--mut:#94a3b8;--pri:#3b82f6;--in:#16a34a}
+  :root{--bg:#0f172a;--panel:#1e293b;--line:#cbd5e1;--txt:#0f172a;--mut:#64748b;
+    --pri:#2563eb;--head:#1e293b;--zebra:#f1f5f9;--hover:#dbeafe}
   *{box-sizing:border-box}
-  body{margin:0;font-family:"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--txt)}
-  header{background:var(--card);padding:14px 16px;border-bottom:1px solid var(--line);
-    position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px}
-  header h1{font-size:17px;margin:0;flex:1}
-  main{max-width:760px;margin:0 auto;padding:16px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
-  .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-  .chip{padding:9px 16px;border-radius:999px;border:1px solid var(--line);background:transparent;
-    color:var(--txt);cursor:pointer;font-size:14px;font-family:inherit}
+  body{margin:0;font-family:"Segoe UI",system-ui,sans-serif;background:#0f172a;color:#e2e8f0}
+  header{background:var(--panel);padding:12px 16px;border-bottom:1px solid #334155;
+    position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  header h1{font-size:16px;margin:0;flex:1;min-width:160px}
+  .btn{background:transparent;border:1px solid #475569;color:#e2e8f0;border-radius:8px;
+    padding:8px 12px;cursor:pointer;font-family:inherit;font-size:14px}
+  .btn.pri{background:#16a34a;border-color:#16a34a;color:#fff;font-weight:600}
+  main{max-width:1000px;margin:0 auto;padding:14px}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .chip{padding:7px 15px;border-radius:999px;border:1px solid #475569;background:transparent;
+    color:#e2e8f0;cursor:pointer;font-size:14px;font-family:inherit}
   .chip.active{background:var(--pri);border-color:var(--pri);color:#fff;font-weight:600}
-  h2{font-size:15px;margin:0 0 12px}
-  table{width:100%;border-collapse:collapse}
-  th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);font-size:14px}
-  th{color:var(--mut);font-weight:600}
-  td.num,th.num{text-align:right}
-  .bignum{font-size:20px;font-weight:700;color:var(--in)}
-  .totrow{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px}
-  .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 18px;flex:1;min-width:130px}
-  .stat .k{color:var(--mut);font-size:13px}
-  .stat .v{font-size:26px;font-weight:700;margin-top:4px}
+  .meta{color:#94a3b8;font-size:13px;margin:0 0 10px}
+  /* ตารางแบบ Excel */
+  .sheet{background:#fff;border-radius:6px;overflow:auto;border:1px solid var(--line);margin-bottom:20px}
+  table{width:100%;border-collapse:collapse;color:var(--txt);font-size:14px;min-width:520px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;white-space:nowrap}
+  thead th{position:sticky;top:0;background:var(--head);color:#fff;font-weight:600;z-index:1}
+  tbody tr:nth-child(even){background:var(--zebra)}
+  tbody tr:hover{background:var(--hover)}
+  td.c{text-align:center} td.r{text-align:right;font-variant-numeric:tabular-nums}
+  .idx{color:var(--mut);text-align:center;width:44px}
+  .total td{font-weight:700;background:#e2e8f0}
   a{color:var(--pri)}
-  .muted{color:var(--mut);text-align:center;padding:14px}
-  .time{color:var(--mut);font-size:12px}
-  button.refresh{background:transparent;border:1px solid var(--line);color:var(--txt);
-    border-radius:10px;padding:8px 12px;cursor:pointer;font-family:inherit}
+  .muted{color:var(--mut);text-align:center;padding:16px}
+  h2{font-size:14px;margin:18px 0 8px;color:#e2e8f0}
 </style>
 </head>
 <body>
 <header>
   <h1>📊 สรุปผลงานกรอ</h1>
-  <button class="refresh" id="refreshBtn">↻ รีเฟรช</button>
+  <button class="btn" id="refreshBtn">↻ รีเฟรช</button>
+  <button class="btn pri" id="exportBtn">⬇️ ดาวน์โหลด Excel</button>
 </header>
 <main>
   <div class="filters" id="filters">
@@ -47,25 +50,25 @@
     <button class="chip" data-range="month">30 วัน</button>
     <button class="chip" data-range="all">ทั้งหมด</button>
   </div>
+  <p class="meta" id="meta">—</p>
 
-  <div class="totrow">
-    <div class="stat"><div class="k">รวมม้วนที่กรอ</div><div class="v" id="totRolls">–</div></div>
-    <div class="stat"><div class="k">จำนวนพนักงานที่ทำงาน</div><div class="v" id="totEmp">–</div></div>
-  </div>
-
-  <div class="card">
-    <h2>ผลงานรายคน</h2>
+  <h2>สรุปรายคน</h2>
+  <div class="sheet">
     <table>
-      <thead><tr><th>พนักงาน</th><th class="num">จำนวนม้วน</th></tr></thead>
-      <tbody id="byEmp"><tr><td colspan="2" class="muted">— กำลังโหลด —</td></tr></tbody>
+      <thead><tr><th class="idx">#</th><th>พนักงาน</th><th>จำนวนม้วนที่กรอ</th></tr></thead>
+      <tbody id="byEmp"><tr><td colspan="3" class="muted">— กำลังโหลด —</td></tr></tbody>
     </table>
   </div>
 
-  <div class="card">
-    <h2>รายการล่าสุด</h2>
+  <h2>รายละเอียดทั้งหมด</h2>
+  <div class="sheet">
     <table>
-      <thead><tr><th>เวลา</th><th>พนักงาน</th><th>ม้วน</th></tr></thead>
-      <tbody id="log"><tr><td colspan="3" class="muted">— กำลังโหลด —</td></tr></tbody>
+      <thead><tr>
+        <th class="idx">#</th><th>วันที่</th><th>เวลา</th><th>พนักงาน</th>
+        <th>ม้วนที่</th><th>สินค้า</th><th>Lot No</th><th>เครื่อง</th>
+        <th class="r">น้ำหนัก (kg)</th><th>ลูกค้า</th>
+      </tr></thead>
+      <tbody id="log"><tr><td colspan="10" class="muted">— กำลังโหลด —</td></tr></tbody>
     </table>
   </div>
 </main>
@@ -76,6 +79,7 @@ const SUPABASE_KEY="sb_publishable_UOD2Z3KDcJ8DZTEOeyXqdg_wWySpR4B";
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=id=>document.getElementById(id);
 let range="today";
+let rows=[];   // เก็บข้อมูลดิบไว้ export
 
 function sinceISO(r){
   const d=new Date();
@@ -85,35 +89,66 @@ function sinceISO(r){
   else return null;
   return d.toISOString();
 }
+const rangeLabel={today:"วันนี้",week:"7 วันล่าสุด",month:"30 วันล่าสุด",all:"ทั้งหมด"};
 
 async function load(){
-  $("byEmp").innerHTML='<tr><td colspan="2" class="muted">— กำลังโหลด —</td></tr>';
-  $("log").innerHTML='<tr><td colspan="3" class="muted">— กำลังโหลด —</td></tr>';
-  let q=sb.from("roll_events").select("created_at,employees(name),rolls(roll_code)")
-    .eq("action","กรอ").order("created_at",{ascending:false}).limit(1000);
+  $("byEmp").innerHTML='<tr><td colspan="3" class="muted">— กำลังโหลด —</td></tr>';
+  $("log").innerHTML='<tr><td colspan="5" class="muted">— กำลังโหลด —</td></tr>';
+  let q=sb.from("roll_events")
+    .select("created_at,employees(name),rolls(roll_code,roll_no,lot_no,machine_no,product_name,weight,customer)")
+    .eq("action","กรอ").order("created_at",{ascending:false}).limit(2000);
   const s=sinceISO(range); if(s) q=q.gte("created_at",s);
   const {data,error}=await q;
-  if(error){ $("byEmp").innerHTML='<tr><td colspan="2" class="muted">โหลดไม่สำเร็จ</td></tr>'; return; }
+  if(error){ $("log").innerHTML='<tr><td colspan="10" class="muted">โหลดไม่สำเร็จ</td></tr>'; return; }
+  rows=data;
 
   // สรุปรายคน
   const counts={};
   data.forEach(ev=>{ const n=ev.employees?.name||"?"; counts[n]=(counts[n]||0)+1; });
-  const rows=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
-  $("totRolls").textContent=data.length;
-  $("totEmp").textContent=rows.length;
-  $("byEmp").innerHTML = rows.length
-    ? rows.map(([n,c])=>`<tr><td>${n}</td><td class="num bignum">${c}</td></tr>`).join("")
-    : '<tr><td colspan="2" class="muted">— ไม่มีข้อมูล —</td></tr>';
-
-  // รายการล่าสุด
-  $("log").innerHTML = data.length
-    ? data.slice(0,200).map(ev=>{
-        const t=new Date(ev.created_at).toLocaleString("th-TH",{dateStyle:"short",timeStyle:"short"});
-        const code=ev.rolls?.roll_code||"";
-        const cell=/^https?:\/\//i.test(code)?`<a href="${code}" target="_blank" rel="noopener">ดูม้วน ↗</a>`:code;
-        return `<tr><td class="time">${t}</td><td>${ev.employees?.name||"?"}</td><td>${cell}</td></tr>`;
-      }).join("")
+  const emps=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  $("meta").textContent=`ช่วง: ${rangeLabel[range]} · รวม ${data.length} ม้วน · ${emps.length} คน`;
+  $("byEmp").innerHTML = emps.length
+    ? emps.map(([n,c],i)=>`<tr><td class="idx">${i+1}</td><td>${n}</td><td class="r">${c}</td></tr>`).join("")
+      + `<tr class="total"><td></td><td>รวม</td><td class="r">${data.length}</td></tr>`
     : '<tr><td colspan="3" class="muted">— ไม่มีข้อมูล —</td></tr>';
+
+  // รายละเอียด
+  const dash=v=>(v==null||v==="")?"–":v;
+  $("log").innerHTML = data.length
+    ? data.map((ev,i)=>{
+        const d=new Date(ev.created_at);
+        const day=d.toLocaleDateString("th-TH",{day:"2-digit",month:"2-digit",year:"numeric"});
+        const tm=d.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"});
+        const r=ev.rolls||{};
+        return `<tr><td class="idx">${i+1}</td><td class="c">${day}</td><td class="c">${tm}</td>`
+          +`<td>${ev.employees?.name||"?"}</td>`
+          +`<td class="c">${dash(r.roll_no)}</td><td>${dash(r.product_name)}</td>`
+          +`<td>${dash(r.lot_no)}</td><td class="c">${dash(r.machine_no)}</td>`
+          +`<td class="r">${r.weight!=null?r.weight:"–"}</td><td>${dash(r.customer)}</td></tr>`;
+      }).join("")
+    : '<tr><td colspan="10" class="muted">— ไม่มีข้อมูล —</td></tr>';
+}
+
+// export เป็น CSV (เปิดใน Excel ได้ ภาษาไทยไม่เพี้ยนด้วย BOM)
+function exportCSV(){
+  if(!rows.length){ alert("ไม่มีข้อมูลให้ดาวน์โหลด"); return; }
+  const head=["ลำดับ","วันที่","เวลา","พนักงาน","ม้วนที่","สินค้า","Lot No","เครื่อง","น้ำหนัก(kg)","ลูกค้า"];
+  const esc=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+  const lines=[head.map(esc).join(",")];
+  rows.forEach((ev,i)=>{
+    const d=new Date(ev.created_at); const r=ev.rolls||{};
+    lines.push([i+1,
+      d.toLocaleDateString("th-TH"),
+      d.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}),
+      ev.employees?.name||"",
+      r.roll_no??"", r.product_name??"", r.lot_no??"", r.machine_no??"", r.weight??"", r.customer??""
+    ].map(esc).join(","));
+  });
+  const blob=new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv;charset=utf-8;"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=`ผลงานกรอ_${range}_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
 }
 
 $("filters").addEventListener("click",e=>{
@@ -122,6 +157,7 @@ $("filters").addEventListener("click",e=>{
   b.classList.add("active"); range=b.dataset.range; load();
 });
 $("refreshBtn").onclick=load;
+$("exportBtn").onclick=exportCSV;
 load();
 </script>
 </body>
