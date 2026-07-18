@@ -37,6 +37,9 @@
   table.detail{width:100%;border-collapse:collapse;margin-top:6px}
   table.detail th,table.detail td{border:1px solid var(--line);padding:7px 9px;font-size:13px;text-align:left;vertical-align:top}
   table.detail th{color:var(--mut);font-weight:600;white-space:nowrap;width:38%;background:#0b1220}
+  .rnote{font-size:13px;margin:0 0 8px;padding:8px 10px;border-radius:8px;line-height:1.4}
+  .rnote.good{background:rgba(22,163,74,.15);border:1px solid var(--in);color:#86efac}
+  .rnote.bad{background:rgba(249,115,22,.15);border:1px solid var(--out);color:#fdba74}
   .totrow{display:flex;gap:12px;margin-bottom:14px}
   .stat{background:#0b1220;border:1px solid var(--line);border-radius:12px;padding:14px 18px;flex:1}
   .stat .k{color:var(--mut);font-size:13px}
@@ -102,6 +105,7 @@
 
     <div style="height:14px"></div>
     <label for="reasonSel">ม้วนเป็นอะไร? (เหตุผลที่ต้องกรอ)</label>
+    <p class="rnote" id="reasonNote"></p>
     <select id="reasonSel"></select>
     <div style="height:8px"></div>
     <input id="reasonText" placeholder="ระบุเหตุผล (แก้ไข/พิมพ์เองได้)" />
@@ -154,15 +158,24 @@ function fmtVal(k,v){
 }
 
 // ===== รายการเหตุผล (แก้ไข/เพิ่มได้ที่นี่) =====
-const REASONS = [
+// กรณีม้วนเสีย — ม้วนที่กรอมาอยู่แล้ว (ตำหนิจากการผลิต)
+const REASONS_BAD = [
   "ไฟตก","น้ำหนักน้อย","ฟิล์มขาด","ม้วนหลวม","ม้วนย่น",
   "มีรอย/ตำหนิ","สีเพี้ยน","พิมพ์เหลื่อม","ขอบไม่เรียบ",
   "ปนเปื้อน/ฝุ่น","แกนเสีย"
 ];
-function initReasons(){
+// กรณีม้วนดี — เอาม้วนดีมากรอ (เหตุผลอื่น)
+const REASONS_GOOD = [
+  "ตัดแบ่งม้วน","เปลี่ยนขนาด/ความยาว","ลูกค้าขอ","แบ่งส่งงาน",
+  "ม้วนใหญ่เกิน","รวมม้วน","ทำตัวอย่าง/ทดสอบ","กรอแก้แกน"
+];
+function fillReasonOptions(list){
   $("reasonSel").innerHTML='<option value="">— เลือกเหตุผล —</option>'
-    + REASONS.map(r=>`<option value="${r}">${r}</option>`).join("")
+    + list.map(r=>`<option value="${r}">${r}</option>`).join("")
     + '<option value="__other">อื่นๆ (พิมพ์เอง)</option>';
+}
+function initReasons(){
+  fillReasonOptions(REASONS_BAD);
   $("reasonSel").onchange=e=>{
     const v=e.target.value;
     if(v==="__other"){ $("reasonText").value=""; $("reasonText").focus(); }
@@ -261,11 +274,34 @@ async function handleRollCode(code){
   }
   currentRoll=roll;
   renderDetail(roll);
-  // เติมเหตุผลจากหมายเหตุเดิมของระบบชั่ง (ถ้ามี) — แก้ไขได้
-  const oldRemark=(roll.detail&&roll.detail.remark)||"";
-  $("reasonText").value=oldRemark;
-  $("reasonSel").value=REASONS.includes(oldRemark)?oldRemark:"";
+  setupReason(roll);
   hide("scanCard"); show("rollCard");
+}
+
+// เตรียมช่องเหตุผลตามประเภทม้วน (ดี / เสีย)
+function setupReason(roll){
+  const d=roll.detail||{};
+  const isGood = d.roll_type ? d.roll_type==="good" : !d.remark;
+  const oldRemark=d.remark||"";
+  if(isGood){
+    // ม้วนดี → ไม่มีสาเหตุติดมา ต้องพิมพ์เอง
+    fillReasonOptions(REASONS_GOOD);
+    $("reasonSel").value="";
+    $("reasonText").value="";
+    $("reasonText").placeholder="ระบุสาเหตุที่นำม้วนดีมากรอ";
+    $("reasonNote").textContent="🟢 ม้วนดี — ไม่มีสาเหตุจากระบบ กรุณาระบุสาเหตุที่นำมากรอ";
+    $("reasonNote").className="rnote good";
+  } else {
+    // ม้วนเสีย → เติมสาเหตุเดิมให้ แก้ได้
+    fillReasonOptions(REASONS_BAD);
+    $("reasonText").value=oldRemark;
+    $("reasonSel").value=REASONS_BAD.includes(oldRemark)?oldRemark:"";
+    $("reasonText").placeholder="ระบุเหตุผล (แก้ไข/พิมพ์เองได้)";
+    $("reasonNote").textContent=oldRemark
+      ? "🔴 ม้วนเสีย — เติมสาเหตุจากระบบชั่งให้แล้ว (แก้ได้)"
+      : "🔴 ม้วนเสีย — ระบบไม่มีหมายเหตุ กรุณาระบุเอง";
+    $("reasonNote").className="rnote bad";
+  }
 }
 
 // แสดงรายละเอียดม้วนทั้งหมดในหน้ายืนยัน
