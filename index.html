@@ -34,6 +34,13 @@
   .rollbox{text-align:center;padding:8px 0}
   .rollbox .code{font-size:22px;font-weight:700}
   .rollbox .desc{color:var(--mut);font-size:14px;margin-top:4px}
+  table.detail{width:100%;border-collapse:collapse;margin-top:6px}
+  table.detail th,table.detail td{border:1px solid var(--line);padding:7px 9px;font-size:13px;text-align:left;vertical-align:top}
+  table.detail th{color:var(--mut);font-weight:600;white-space:nowrap;width:38%;background:#0b1220}
+  .totrow{display:flex;gap:12px;margin-bottom:14px}
+  .stat{background:#0b1220;border:1px solid var(--line);border-radius:12px;padding:14px 18px;flex:1}
+  .stat .k{color:var(--mut);font-size:13px}
+  .stat .v{font-size:30px;font-weight:700;margin-top:4px;color:var(--in)}
   .hidden{display:none}
   .events{list-style:none;padding:0;margin:0}
   .events li{border-bottom:1px solid var(--line);padding:10px 0;font-size:14px;display:flex;gap:10px;align-items:center}
@@ -67,21 +74,31 @@
     <button class="btn-pri" id="loginBtn">เข้าสู่ระบบ</button>
   </section>
 
-  <!-- STEP 2: แสกน -->
+  <!-- STEP 2: หน้างานของฉัน -->
+  <section id="homeCard" class="card hidden">
+    <div class="totrow">
+      <div class="stat"><div class="k">วันนี้กรอไปแล้ว</div><div class="v" id="myCount">0</div></div>
+    </div>
+    <button class="btn-pri" id="scanBtn" style="background:var(--in);font-size:18px;padding:16px">📷 แสกนม้วน</button>
+    <h2 style="margin-top:20px">ม้วนที่คุณหยิบไปกรอวันนี้</h2>
+    <ul class="events" id="mine"><li class="muted">— ยังไม่มี —</li></ul>
+  </section>
+
+  <!-- STEP 3: แสกน -->
   <section id="scanCard" class="card hidden">
     <h2>แสกน QR ม้วนที่จะกรอ</h2>
     <div id="reader"></div>
     <p class="muted" id="scanHint">เล็งกล้องไปที่ QR บนม้วน</p>
-    <h2 style="margin-top:18px">ม้วนที่คุณหยิบไปกรอวันนี้</h2>
-    <ul class="events" id="mine"><li class="muted">— ยังไม่มี —</li></ul>
+    <div style="height:10px"></div>
+    <button class="btn-ghost" id="backHomeBtn">← กลับหน้างาน</button>
   </section>
 
   <!-- STEP 3: ยืนยันหยิบม้วนไปกรอ -->
   <section id="rollCard" class="card hidden">
     <div class="rollbox">
       <div class="code">🧵 หยิบม้วนนี้ไปกรอ?</div>
-      <a class="desc" id="rollLink" href="#" target="_blank" rel="noopener">ดูข้อมูลม้วน ↗</a>
     </div>
+    <table class="detail" id="rollDetail"></table>
     <div style="height:12px"></div>
     <button class="btn-pri" id="confirmBtn" style="background:var(--in)">✅ ยืนยัน หยิบไปกรอ</button>
     <div style="height:10px"></div>
@@ -102,15 +119,31 @@ const PRINT_URL = "https://belwjdajuaxbhaqtlhrj.supabase.co";
 const PRINT_KEY = "sb_publishable_AKuuvYnieDQzrkTyAdiKYg_tgkT2Zq-";
 const sbPrint = supabase.createClient(PRINT_URL, PRINT_KEY);
 
-// ดึง UUID ม้วนจากข้อความ QR แล้วอ่านรายละเอียดจากระบบชั่ง
+// ดึง UUID ม้วนจากข้อความ QR แล้วอ่านรายละเอียด "ทั้งหมด" จากระบบชั่ง
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 async function fetchRollDetail(code){
   const m = code.match(UUID_RE);
   if(!m) return null;
   const {data} = await sbPrint.from("production_rolls")
-    .select("roll_no,lot_no,machine_no,product_name,item_code,weight,customer")
-    .eq("id", m[0]).maybeSingle();
+    .select("*").eq("id", m[0]).maybeSingle();
   return data;
+}
+
+// รายการช่องรายละเอียด (ลำดับ + ชื่อไทย) ใช้ร่วมกับหน้าผู้จัดการ
+const ROLL_FIELDS = [
+  ["roll_no","ม้วนที่"],["product_name","สินค้า"],["product_code","รหัสสินค้า"],
+  ["item_code","Item Code"],["mat_code","Mat Code"],["lot_no","Lot No"],
+  ["machine_no","เครื่องจักร"],["section","แผนก"],["customer","ลูกค้า"],["cust_code","รหัสลูกค้า"],
+  ["weight","นน.สุทธิ (kg)"],["gross_weight","นน.เต็ม (kg)"],["core_weight","นน.แกน (kg)"],
+  ["width_cm","หน้ากว้าง (ซม.)"],["thick_mc","ความหนา (mic)"],["length","ความยาว"],
+  ["sale_order","Sale Order"],["work_order","Work Order"],["roll_type","ประเภทม้วน"],
+  ["inspector","ผู้ตรวจสอบ"],["remark","หมายเหตุ"],["created_at","วันที่ผลิต"]
+];
+function fmtVal(k,v){
+  if(v==null||v==="") return "";
+  if(k==="created_at") return new Date(v).toLocaleString("th-TH",{dateStyle:"short",timeStyle:"short"});
+  if(k==="roll_type") return v==="good"?"ดี":(v==="bad"?"เสีย":v);
+  return v;
 }
 
 // ===== state =====
@@ -131,9 +164,9 @@ async function loadEmployees(){
   if(error){ sel.innerHTML='<option value="">โหลดไม่สำเร็จ</option>'; toast("โหลดพนักงานไม่สำเร็จ"); return; }
   sel.innerHTML = '<option value="">— เลือกชื่อ —</option>' +
     data.map(e=>`<option value="${e.id}" data-name="${e.name}">${e.name}</option>`).join("");
-  // จำการล็อกอินล่าสุด
+  // เข้าหน้าทุกครั้งต้องเลือกชื่อก่อน (ไม่ auto-login) — แต่ช่วยเลือกชื่อล่าสุดไว้ให้
   const saved = JSON.parse(localStorage.getItem("emp")||"null");
-  if(saved){ currentEmp=saved; afterLogin(); }
+  if(saved && [...sel.options].some(o=>o.value===saved.id)) sel.value=saved.id;
 }
 
 $("loginBtn").onclick = ()=>{
@@ -146,8 +179,16 @@ $("loginBtn").onclick = ()=>{
 
 function afterLogin(){
   $("whoami").textContent="👤 "+currentEmp.name;
-  hide("loginCard"); show("scanCard"); startScanner(); loadMine();
+  hide("loginCard"); goHome();
 }
+// หน้างานของฉัน (ไม่เปิดกล้อง)
+function goHome(){
+  stopScanner();
+  hide("scanCard"); hide("rollCard"); show("homeCard");
+  loadMine();
+}
+$("scanBtn").onclick=()=>{ hide("homeCard"); show("scanCard"); startScanner(); };
+$("backHomeBtn").onclick=goHome;
 
 // ===== QR scanner =====
 function startScanner(){
@@ -178,7 +219,9 @@ async function handleRollCode(code){
   // ดึงรายละเอียดม้วนจากระบบชั่ง
   const detail = await fetchRollDetail(code);
   let {data:roll} = await sb.from("rolls").select("*").eq("roll_code",code).maybeSingle();
+  // snapshot: เก็บทั้งก้อนใน detail + คอลัมน์หลักไว้ทำสรุป/เรียง
   const snap = detail ? {
+    detail,
     roll_no:detail.roll_no, lot_no:detail.lot_no, machine_no:detail.machine_no,
     product_name:detail.product_name, item_code:detail.item_code,
     weight:detail.weight, customer:detail.customer,
@@ -189,27 +232,26 @@ async function handleRollCode(code){
     if(error){ toast("อ่านม้วนไม่สำเร็จ"); startScanner(); return; }
     roll=created;
   } else if(detail){
-    // อัปเดต snapshot ให้เป็นข้อมูลล่าสุด
     await sb.from("rolls").update(snap).eq("id",roll.id);
     Object.assign(roll, snap);
   }
   currentRoll=roll;
-  // แสดงรายละเอียดในหน้ายืนยัน
-  const parts=[];
-  if(roll.roll_no!=null) parts.push("ม้วนที่ "+roll.roll_no);
-  if(roll.product_name) parts.push(roll.product_name);
-  if(roll.lot_no) parts.push("Lot "+roll.lot_no);
-  if(roll.machine_no) parts.push(roll.machine_no);
-  if(roll.weight!=null) parts.push(roll.weight+" kg");
-  if(roll.customer) parts.push(roll.customer);
-  const a=$("rollLink");
-  if(parts.length){ a.textContent=parts.join(" · "); a.style.pointerEvents="none"; a.removeAttribute("href"); }
-  else {
-    const isUrl=/^https?:\/\//i.test(roll.roll_code);
-    if(isUrl){ a.href=roll.roll_code; a.textContent="ดูข้อมูลม้วน ↗"; a.style.pointerEvents=""; }
-    else { a.textContent=roll.roll_code; a.style.pointerEvents="none"; a.removeAttribute("href"); }
-  }
+  renderDetail(roll);
   hide("scanCard"); show("rollCard");
+}
+
+// แสดงรายละเอียดม้วนทั้งหมดในหน้ายืนยัน
+function renderDetail(roll){
+  const d=roll.detail||{};
+  const rows=ROLL_FIELDS
+    .map(([k,label])=>[label,fmtVal(k,d[k])])
+    .filter(([,v])=>v!=="");
+  const tbl=$("rollDetail");
+  if(rows.length){
+    tbl.innerHTML=rows.map(([l,v])=>`<tr><th>${l}</th><td>${v}</td></tr>`).join("");
+  } else {
+    tbl.innerHTML=`<tr><th>ม้วน</th><td>${roll.roll_code}</td></tr>`;
+  }
 }
 
 // ===== บันทึกว่าหยิบม้วนไปกรอ =====
@@ -223,7 +265,7 @@ async function confirmPick(){
   if(error){ toast("บันทึกไม่สำเร็จ"); return; }
   toast("✅ บันทึกแล้ว — หยิบไปกรอ");
   currentRoll=null;
-  hide("rollCard"); show("scanCard"); startScanner(); loadMine();
+  goHome();   // กลับหน้างานของฉัน
 }
 $("confirmBtn").onclick=confirmPick;
 $("scanAgainBtn").onclick=()=>{ currentRoll=null; hide("rollCard"); show("scanCard"); startScanner(); };
@@ -237,6 +279,7 @@ async function loadMine(){
     .eq("employee_id",currentEmp.id).gte("created_at",since.toISOString())
     .order("created_at",{ascending:false}).limit(100);
   if(error){ ul.innerHTML='<li class="muted">โหลดไม่สำเร็จ</li>'; return; }
+  $("myCount").textContent=data.length;
   if(!data.length){ ul.innerHTML='<li class="muted">— ยังไม่มี —</li>'; return; }
   ul.innerHTML=data.map(ev=>{
     const t=new Date(ev.created_at).toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"});

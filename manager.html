@@ -84,12 +84,8 @@
   <h2>รายละเอียดทั้งหมด</h2>
   <div class="sheet">
     <table>
-      <thead><tr>
-        <th class="idx">#</th><th>วันที่</th><th>เวลา</th><th>พนักงาน</th>
-        <th>ม้วนที่</th><th>สินค้า</th><th>Lot No</th><th>เครื่อง</th>
-        <th class="r">น้ำหนัก (kg)</th><th>ลูกค้า</th>
-      </tr></thead>
-      <tbody id="log"><tr><td colspan="10" class="muted">— กำลังโหลด —</td></tr></tbody>
+      <thead><tr id="logHead"></tr></thead>
+      <tbody id="log"><tr><td class="muted">— กำลังโหลด —</td></tr></tbody>
     </table>
   </div>
 </main>
@@ -101,6 +97,25 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const $=id=>document.getElementById(id);
 let range="today";
 let rows=[];   // เก็บข้อมูลดิบไว้ export
+
+// ช่องรายละเอียดม้วนทั้งหมด (ลำดับ + ชื่อไทย)
+const ROLL_FIELDS = [
+  ["roll_no","ม้วนที่"],["product_name","สินค้า"],["product_code","รหัสสินค้า"],
+  ["item_code","Item Code"],["mat_code","Mat Code"],["lot_no","Lot No"],
+  ["machine_no","เครื่องจักร"],["section","แผนก"],["customer","ลูกค้า"],["cust_code","รหัสลูกค้า"],
+  ["weight","นน.สุทธิ (kg)"],["gross_weight","นน.เต็ม (kg)"],["core_weight","นน.แกน (kg)"],
+  ["width_cm","หน้ากว้าง (ซม.)"],["thick_mc","ความหนา (mic)"],["length","ความยาว"],
+  ["sale_order","Sale Order"],["work_order","Work Order"],["roll_type","ประเภทม้วน"],
+  ["inspector","ผู้ตรวจสอบ"],["remark","หมายเหตุ"],["created_at","วันที่ผลิต"]
+];
+function fmtVal(k,v){
+  if(v==null||v==="") return "";
+  if(k==="created_at") return new Date(v).toLocaleString("th-TH",{dateStyle:"short",timeStyle:"short"});
+  if(k==="roll_type") return v==="good"?"ดี":(v==="bad"?"เสีย":v);
+  return v;
+}
+// ดึงค่า field จากแถว event (จาก detail ก่อน ถ้าไม่มีใช้คอลัมน์หลัก)
+function fld(ev,k){ const d=ev.rolls?.detail||{}; const v=(d[k]!=null&&d[k]!=="")?d[k]:ev.rolls?.[k]; return v; }
 
 function sinceISO(r){
   const d=new Date();
@@ -116,7 +131,7 @@ async function load(){
   $("byEmp").innerHTML='<tr><td colspan="3" class="muted">— กำลังโหลด —</td></tr>';
   $("log").innerHTML='<tr><td colspan="5" class="muted">— กำลังโหลด —</td></tr>';
   let q=sb.from("roll_events")
-    .select("created_at,employees(name),rolls(roll_code,roll_no,lot_no,machine_no,product_name,weight,customer)")
+    .select("created_at,employees(name),rolls(roll_code,roll_no,lot_no,machine_no,product_name,weight,customer,detail)")
     .eq("action","กรอ").order("created_at",{ascending:false}).limit(2000);
   const s=sinceISO(range); if(s) q=q.gte("created_at",s);
   const {data,error}=await q;
@@ -133,36 +148,37 @@ async function load(){
       + `<tr class="total"><td></td><td>รวม</td><td class="r">${data.length}</td></tr>`
     : '<tr><td colspan="3" class="muted">— ไม่มีข้อมูล —</td></tr>';
 
-  // รายละเอียด
+  // หัวตาราง: # / บันทึกเมื่อ / พนักงาน / แล้วตามด้วยทุก field ของม้วน
+  $("logHead").innerHTML =
+    '<th class="idx">#</th><th>บันทึกเมื่อ</th><th>พนักงาน</th>'
+    + ROLL_FIELDS.map(([,label])=>`<th>${label}</th>`).join("");
+
   const dash=v=>(v==null||v==="")?"–":v;
+  const colspan=3+ROLL_FIELDS.length;
   $("log").innerHTML = data.length
     ? data.map((ev,i)=>{
         const d=new Date(ev.created_at);
-        const day=d.toLocaleDateString("th-TH",{day:"2-digit",month:"2-digit",year:"numeric"});
-        const tm=d.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"});
-        const r=ev.rolls||{};
-        return `<tr><td class="idx">${i+1}</td><td class="c">${day}</td><td class="c">${tm}</td>`
-          +`<td>${ev.employees?.name||"?"}</td>`
-          +`<td class="c">${dash(r.roll_no)}</td><td>${dash(r.product_name)}</td>`
-          +`<td>${dash(r.lot_no)}</td><td class="c">${dash(r.machine_no)}</td>`
-          +`<td class="r">${r.weight!=null?r.weight:"–"}</td><td>${dash(r.customer)}</td></tr>`;
+        const when=d.toLocaleString("th-TH",{dateStyle:"short",timeStyle:"short"});
+        const cells=ROLL_FIELDS.map(([k])=>`<td>${dash(fmtVal(k,fld(ev,k)))}</td>`).join("");
+        return `<tr><td class="idx">${i+1}</td><td class="c">${when}</td>`
+          +`<td>${ev.employees?.name||"?"}</td>${cells}</tr>`;
       }).join("")
-    : '<tr><td colspan="10" class="muted">— ไม่มีข้อมูล —</td></tr>';
+    : `<tr><td colspan="${colspan}" class="muted">— ไม่มีข้อมูล —</td></tr>`;
 }
 
 // export เป็น CSV (เปิดใน Excel ได้ ภาษาไทยไม่เพี้ยนด้วย BOM)
 function exportCSV(){
   if(!rows.length){ alert("ไม่มีข้อมูลให้ดาวน์โหลด"); return; }
-  const head=["ลำดับ","วันที่","เวลา","พนักงาน","ม้วนที่","สินค้า","Lot No","เครื่อง","น้ำหนัก(kg)","ลูกค้า"];
+  const head=["ลำดับ","วันที่","เวลา","พนักงาน",...ROLL_FIELDS.map(([,l])=>l)];
   const esc=v=>`"${String(v??"").replace(/"/g,'""')}"`;
   const lines=[head.map(esc).join(",")];
   rows.forEach((ev,i)=>{
-    const d=new Date(ev.created_at); const r=ev.rolls||{};
+    const d=new Date(ev.created_at);
     lines.push([i+1,
       d.toLocaleDateString("th-TH"),
       d.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}),
       ev.employees?.name||"",
-      r.roll_no??"", r.product_name??"", r.lot_no??"", r.machine_no??"", r.weight??"", r.customer??""
+      ...ROLL_FIELDS.map(([k])=>fmtVal(k,fld(ev,k)))
     ].map(esc).join(","));
   });
   const blob=new Blob(["﻿"+lines.join("\r\n")],{type:"text/csv;charset=utf-8;"});
