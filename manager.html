@@ -35,6 +35,17 @@
   a{color:var(--pri)}
   .muted{color:var(--mut);text-align:center;padding:16px}
   h2{font-size:14px;margin:18px 0 8px;color:#e2e8f0}
+  .empmgr{background:var(--panel);border:1px solid #334155;border-radius:10px;padding:14px;margin-bottom:8px}
+  .addrow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .addrow input{flex:1;min-width:140px;padding:9px 12px;border-radius:8px;border:1px solid #475569;
+    background:#0b1220;color:#e2e8f0;font-family:inherit;font-size:14px}
+  .emplist{list-style:none;margin:0;padding:0}
+  .emplist li{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid #334155;font-size:14px;color:#e2e8f0}
+  .emplist li:last-child{border:none}
+  .emplist .nm{flex:1}
+  .emplist .cd{color:#94a3b8;font-size:12px}
+  .del{background:transparent;border:1px solid #b91c1c;color:#f87171;border-radius:8px;
+    padding:5px 12px;cursor:pointer;font-family:inherit;font-size:13px}
 </style>
 </head>
 <body>
@@ -51,6 +62,16 @@
     <button class="chip" data-range="all">ทั้งหมด</button>
   </div>
   <p class="meta" id="meta">—</p>
+
+  <h2>จัดการพนักงาน</h2>
+  <div class="empmgr">
+    <div class="addrow">
+      <input id="empName" placeholder="ชื่อพนักงานใหม่" />
+      <input id="empCode" placeholder="รหัส (ถ้ามี)" style="max-width:120px" />
+      <button class="btn pri" id="addEmpBtn">+ เพิ่ม</button>
+    </div>
+    <ul class="emplist" id="empList"><li class="muted">— กำลังโหลด —</li></ul>
+  </div>
 
   <h2>สรุปรายคน</h2>
   <div class="sheet">
@@ -151,14 +172,49 @@ function exportCSV(){
   a.click(); URL.revokeObjectURL(a.href);
 }
 
+// ===== จัดการพนักงาน =====
+async function loadEmps(){
+  const ul=$("empList"); ul.innerHTML='<li class="muted">— กำลังโหลด —</li>';
+  const {data,error}=await sb.from("employees").select("id,name,code")
+    .eq("active",true).order("name");
+  if(error){ ul.innerHTML='<li class="muted">โหลดไม่สำเร็จ</li>'; return; }
+  if(!data.length){ ul.innerHTML='<li class="muted">— ยังไม่มีพนักงาน —</li>'; return; }
+  ul.innerHTML="";
+  data.forEach(e=>{
+    const li=document.createElement("li");
+    li.innerHTML=`<span class="nm">${e.name}</span>`
+      +(e.code?`<span class="cd">${e.code}</span>`:"")
+      +`<button class="del">ลบ</button>`;
+    li.querySelector(".del").onclick=()=>removeEmp(e);
+    ul.appendChild(li);
+  });
+}
+async function addEmp(){
+  const name=$("empName").value.trim();
+  const code=$("empCode").value.trim()||null;
+  if(!name){ alert("กรุณากรอกชื่อ"); return; }
+  const {error}=await sb.from("employees").insert({name,code});
+  if(error){ alert("เพิ่มไม่สำเร็จ"+(error.code==="23505"?" (รหัสซ้ำ)":"")); return; }
+  $("empName").value=""; $("empCode").value="";
+  loadEmps();
+}
+async function removeEmp(e){
+  if(!confirm(`ลบพนักงาน "${e.name}" ออกจากรายชื่อ?\n(ประวัติงานเก่ายังอยู่)`)) return;
+  const {error}=await sb.from("employees").update({active:false}).eq("id",e.id);
+  if(error){ alert("ลบไม่สำเร็จ"); return; }
+  loadEmps();
+}
+$("addEmpBtn").onclick=addEmp;
+$("empName").addEventListener("keydown",e=>{ if(e.key==="Enter") addEmp(); });
+
 $("filters").addEventListener("click",e=>{
   const b=e.target.closest(".chip"); if(!b) return;
   document.querySelectorAll(".chip").forEach(c=>c.classList.remove("active"));
   b.classList.add("active"); range=b.dataset.range; load();
 });
-$("refreshBtn").onclick=load;
+$("refreshBtn").onclick=()=>{ load(); loadEmps(); };
 $("exportBtn").onclick=exportCSV;
-load();
+load(); loadEmps();
 </script>
 </body>
 </html>
