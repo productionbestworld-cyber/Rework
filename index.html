@@ -69,29 +69,23 @@
 
   <!-- STEP 2: แสกน -->
   <section id="scanCard" class="card hidden">
-    <h2>แสกน QR ม้วน</h2>
+    <h2>แสกน QR ม้วนที่จะกรอ</h2>
     <div id="reader"></div>
     <p class="muted" id="scanHint">เล็งกล้องไปที่ QR บนม้วน</p>
+    <h2 style="margin-top:18px">ม้วนที่คุณหยิบไปกรอวันนี้</h2>
+    <ul class="events" id="mine"><li class="muted">— ยังไม่มี —</li></ul>
   </section>
 
-  <!-- STEP 3: ม้วน + บันทึกงาน -->
+  <!-- STEP 3: ยืนยันหยิบม้วนไปกรอ -->
   <section id="rollCard" class="card hidden">
     <div class="rollbox">
-      <div class="code" id="rollCode"></div>
-      <div class="desc" id="rollDesc"></div>
+      <div class="code">🧵 หยิบม้วนนี้ไปกรอ?</div>
+      <a class="desc" id="rollLink" href="#" target="_blank" rel="noopener">ดูข้อมูลม้วน ↗</a>
     </div>
-    <label for="note">หมายเหตุ (ถ้ามี)</label>
-    <input id="note" placeholder="เช่น จำนวน / เครื่อง / ล็อต" />
     <div style="height:12px"></div>
-    <div class="row">
-      <button class="btn-in" id="inBtn">⬇️ รับเข้า</button>
-      <button class="btn-out" id="outBtn">⬆️ เบิกออก</button>
-    </div>
+    <button class="btn-pri" id="confirmBtn" style="background:var(--in)">✅ ยืนยัน หยิบไปกรอ</button>
     <div style="height:10px"></div>
-    <button class="btn-ghost" id="scanAgainBtn">แสกนม้วนอื่น</button>
-
-    <h2 style="margin-top:20px">ประวัติของม้วนนี้</h2>
-    <ul class="events" id="events"><li class="muted">— กำลังโหลด —</li></ul>
+    <button class="btn-ghost" id="scanAgainBtn">ยกเลิก / แสกนม้วนอื่น</button>
   </section>
 
 </main>
@@ -136,7 +130,7 @@ $("loginBtn").onclick = ()=>{
 
 function afterLogin(){
   $("whoami").textContent="👤 "+currentEmp.name;
-  hide("loginCard"); show("scanCard"); startScanner();
+  hide("loginCard"); show("scanCard"); startScanner(); loadMine();
 }
 
 // ===== QR scanner =====
@@ -161,55 +155,58 @@ function onScan(text){
   handleRollCode(text.trim());
 }
 
-// ===== หา/สร้างม้วน แล้วแสดง =====
+// ===== หา/สร้างม้วนจากข้อมูล QR แล้วให้ยืนยัน =====
 async function handleRollCode(code){
   if(!code) return;
   await stopScanner();
   let {data:roll} = await sb.from("rolls").select("*").eq("roll_code",code).maybeSingle();
   if(!roll){
     const {data:created,error} = await sb.from("rolls").insert({roll_code:code}).select().single();
-    if(error){ toast("บันทึกม้วนใหม่ไม่สำเร็จ"); startScanner(); return; }
-    roll=created; toast("ม้วนใหม่ — เพิ่มเข้าระบบแล้ว");
+    if(error){ toast("อ่านม้วนไม่สำเร็จ"); startScanner(); return; }
+    roll=created;
   }
   currentRoll=roll;
-  $("rollCode").textContent=roll.roll_code;
-  $("rollDesc").textContent=roll.description||"(ไม่มีรายละเอียด)";
-  $("note").value="";
+  const isUrl=/^https?:\/\//i.test(roll.roll_code);
+  const a=$("rollLink");
+  if(isUrl){ a.href=roll.roll_code; a.textContent="ดูข้อมูลม้วน ↗"; a.style.display=""; }
+  else { a.href="#"; a.textContent=roll.roll_code; a.style.pointerEvents="none"; }
   hide("scanCard"); show("rollCard");
-  loadEvents();
 }
 
-// ===== บันทึกงาน รับเข้า/เบิกออก =====
-async function record(action){
+// ===== บันทึกว่าหยิบม้วนไปกรอ =====
+async function confirmPick(){
   if(!currentRoll||!currentEmp) return;
+  $("confirmBtn").disabled=true;
   const {error}=await sb.from("roll_events").insert({
-    roll_id:currentRoll.id, employee_id:currentEmp.id,
-    action, note:$("note").value.trim()||null
+    roll_id:currentRoll.id, employee_id:currentEmp.id, action:'กรอ'
   });
+  $("confirmBtn").disabled=false;
   if(error){ toast("บันทึกไม่สำเร็จ"); return; }
-  toast(action==="in"?"✅ บันทึกรับเข้าแล้ว":"✅ บันทึกเบิกออกแล้ว");
-  $("note").value="";
-  loadEvents();
+  toast("✅ บันทึกแล้ว — หยิบไปกรอ");
+  currentRoll=null;
+  hide("rollCard"); show("scanCard"); startScanner(); loadMine();
 }
-$("inBtn").onclick=()=>record("in");
-$("outBtn").onclick=()=>record("out");
-
+$("confirmBtn").onclick=confirmPick;
 $("scanAgainBtn").onclick=()=>{ currentRoll=null; hide("rollCard"); show("scanCard"); startScanner(); };
 
-// ===== ประวัติของม้วน =====
-async function loadEvents(){
-  const ul=$("events"); ul.innerHTML='<li class="muted">— กำลังโหลด —</li>';
+// ===== ม้วนที่ฉันหยิบไปกรอวันนี้ =====
+async function loadMine(){
+  const ul=$("mine"); ul.innerHTML='<li class="muted">— กำลังโหลด —</li>';
+  const since=new Date(); since.setHours(0,0,0,0);
   const {data,error}=await sb.from("roll_events")
-    .select("action,note,created_at,employees(name)")
-    .eq("roll_id",currentRoll.id).order("created_at",{ascending:false}).limit(50);
-  if(error){ ul.innerHTML='<li class="muted">โหลดประวัติไม่สำเร็จ</li>'; return; }
-  if(!data.length){ ul.innerHTML='<li class="muted">ยังไม่มีประวัติ</li>'; return; }
+    .select("created_at,rolls(roll_code)")
+    .eq("employee_id",currentEmp.id).gte("created_at",since.toISOString())
+    .order("created_at",{ascending:false}).limit(100);
+  if(error){ ul.innerHTML='<li class="muted">โหลดไม่สำเร็จ</li>'; return; }
+  if(!data.length){ ul.innerHTML='<li class="muted">— ยังไม่มี —</li>'; return; }
   ul.innerHTML=data.map(ev=>{
-    const t=new Date(ev.created_at).toLocaleString("th-TH",{dateStyle:"short",timeStyle:"short"});
-    const tag=ev.action==="in"?'<span class="tag tag-in">รับเข้า</span>':'<span class="tag tag-out">เบิกออก</span>';
-    return `<li>${tag}<div class="ev-main">
-      <div class="emp">${ev.employees?.name||"?"}</div>
-      <div class="time">${t}${ev.note?" · "+ev.note:""}</div></div></li>`;
+    const t=new Date(ev.created_at).toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"});
+    const code=ev.rolls?.roll_code||"";
+    const isUrl=/^https?:\/\//i.test(code);
+    const label=isUrl?`<a href="${code}" target="_blank" rel="noopener">ดูม้วน ↗</a>`
+                     :`<span>${code}</span>`;
+    return `<li><span class="tag tag-in">กรอ</span><div class="ev-main">
+      <div class="emp">${label}</div><div class="time">${t}</div></div></li>`;
   }).join("");
 }
 
