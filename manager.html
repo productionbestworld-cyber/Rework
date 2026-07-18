@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>สรุปผลงานกรอ — ผู้จัดการ</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{--bg:#0f172a;--card:#1e293b;--line:#334155;--txt:#e2e8f0;--mut:#94a3b8;--pri:#3b82f6;--in:#16a34a}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--txt)}
+  header{background:var(--card);padding:14px 16px;border-bottom:1px solid var(--line);
+    position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px}
+  header h1{font-size:17px;margin:0;flex:1}
+  main{max-width:760px;margin:0 auto;padding:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+  .chip{padding:9px 16px;border-radius:999px;border:1px solid var(--line);background:transparent;
+    color:var(--txt);cursor:pointer;font-size:14px;font-family:inherit}
+  .chip.active{background:var(--pri);border-color:var(--pri);color:#fff;font-weight:600}
+  h2{font-size:15px;margin:0 0 12px}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);font-size:14px}
+  th{color:var(--mut);font-weight:600}
+  td.num,th.num{text-align:right}
+  .bignum{font-size:20px;font-weight:700;color:var(--in)}
+  .totrow{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 18px;flex:1;min-width:130px}
+  .stat .k{color:var(--mut);font-size:13px}
+  .stat .v{font-size:26px;font-weight:700;margin-top:4px}
+  a{color:var(--pri)}
+  .muted{color:var(--mut);text-align:center;padding:14px}
+  .time{color:var(--mut);font-size:12px}
+  button.refresh{background:transparent;border:1px solid var(--line);color:var(--txt);
+    border-radius:10px;padding:8px 12px;cursor:pointer;font-family:inherit}
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 สรุปผลงานกรอ</h1>
+  <button class="refresh" id="refreshBtn">↻ รีเฟรช</button>
+</header>
+<main>
+  <div class="filters" id="filters">
+    <button class="chip active" data-range="today">วันนี้</button>
+    <button class="chip" data-range="week">7 วัน</button>
+    <button class="chip" data-range="month">30 วัน</button>
+    <button class="chip" data-range="all">ทั้งหมด</button>
+  </div>
+
+  <div class="totrow">
+    <div class="stat"><div class="k">รวมม้วนที่กรอ</div><div class="v" id="totRolls">–</div></div>
+    <div class="stat"><div class="k">จำนวนพนักงานที่ทำงาน</div><div class="v" id="totEmp">–</div></div>
+  </div>
+
+  <div class="card">
+    <h2>ผลงานรายคน</h2>
+    <table>
+      <thead><tr><th>พนักงาน</th><th class="num">จำนวนม้วน</th></tr></thead>
+      <tbody id="byEmp"><tr><td colspan="2" class="muted">— กำลังโหลด —</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>รายการล่าสุด</h2>
+    <table>
+      <thead><tr><th>เวลา</th><th>พนักงาน</th><th>ม้วน</th></tr></thead>
+      <tbody id="log"><tr><td colspan="3" class="muted">— กำลังโหลด —</td></tr></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+const SUPABASE_URL="https://obdhhupzwfdvroeejwji.supabase.co";
+const SUPABASE_KEY="sb_publishable_UOD2Z3KDcJ8DZTEOeyXqdg_wWySpR4B";
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+const $=id=>document.getElementById(id);
+let range="today";
+
+function sinceISO(r){
+  const d=new Date();
+  if(r==="today") d.setHours(0,0,0,0);
+  else if(r==="week") d.setDate(d.getDate()-7);
+  else if(r==="month") d.setDate(d.getDate()-30);
+  else return null;
+  return d.toISOString();
+}
+
+async function load(){
+  $("byEmp").innerHTML='<tr><td colspan="2" class="muted">— กำลังโหลด —</td></tr>';
+  $("log").innerHTML='<tr><td colspan="3" class="muted">— กำลังโหลด —</td></tr>';
+  let q=sb.from("roll_events").select("created_at,employees(name),rolls(roll_code)")
+    .eq("action","กรอ").order("created_at",{ascending:false}).limit(1000);
+  const s=sinceISO(range); if(s) q=q.gte("created_at",s);
+  const {data,error}=await q;
+  if(error){ $("byEmp").innerHTML='<tr><td colspan="2" class="muted">โหลดไม่สำเร็จ</td></tr>'; return; }
+
+  // สรุปรายคน
+  const counts={};
+  data.forEach(ev=>{ const n=ev.employees?.name||"?"; counts[n]=(counts[n]||0)+1; });
+  const rows=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  $("totRolls").textContent=data.length;
+  $("totEmp").textContent=rows.length;
+  $("byEmp").innerHTML = rows.length
+    ? rows.map(([n,c])=>`<tr><td>${n}</td><td class="num bignum">${c}</td></tr>`).join("")
+    : '<tr><td colspan="2" class="muted">— ไม่มีข้อมูล —</td></tr>';
+
+  // รายการล่าสุด
+  $("log").innerHTML = data.length
+    ? data.slice(0,200).map(ev=>{
+        const t=new Date(ev.created_at).toLocaleString("th-TH",{dateStyle:"short",timeStyle:"short"});
+        const code=ev.rolls?.roll_code||"";
+        const cell=/^https?:\/\//i.test(code)?`<a href="${code}" target="_blank" rel="noopener">ดูม้วน ↗</a>`:code;
+        return `<tr><td class="time">${t}</td><td>${ev.employees?.name||"?"}</td><td>${cell}</td></tr>`;
+      }).join("")
+    : '<tr><td colspan="3" class="muted">— ไม่มีข้อมูล —</td></tr>';
+}
+
+$("filters").addEventListener("click",e=>{
+  const b=e.target.closest(".chip"); if(!b) return;
+  document.querySelectorAll(".chip").forEach(c=>c.classList.remove("active"));
+  b.classList.add("active"); range=b.dataset.range; load();
+});
+$("refreshBtn").onclick=load;
+load();
+</script>
+</body>
+</html>
