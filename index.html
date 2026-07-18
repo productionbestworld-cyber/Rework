@@ -99,6 +99,13 @@
       <div class="code">🧵 หยิบม้วนนี้ไปกรอ?</div>
     </div>
     <table class="detail" id="rollDetail"></table>
+
+    <div style="height:14px"></div>
+    <label for="reasonSel">ม้วนเป็นอะไร? (เหตุผลที่ต้องกรอ)</label>
+    <select id="reasonSel"></select>
+    <div style="height:8px"></div>
+    <input id="reasonText" placeholder="ระบุเหตุผล (แก้ไข/พิมพ์เองได้)" />
+
     <div style="height:12px"></div>
     <button class="btn-pri" id="confirmBtn" style="background:var(--in)">✅ ยืนยัน หยิบไปกรอ</button>
     <div style="height:10px"></div>
@@ -144,6 +151,23 @@ function fmtVal(k,v){
   if(k==="created_at") return new Date(v).toLocaleString("th-TH",{dateStyle:"short",timeStyle:"short"});
   if(k==="roll_type") return v==="good"?"ดี":(v==="bad"?"เสีย":v);
   return v;
+}
+
+// ===== รายการเหตุผล (แก้ไข/เพิ่มได้ที่นี่) =====
+const REASONS = [
+  "ไฟตก","น้ำหนักน้อย","ฟิล์มขาด","ม้วนหลวม","ม้วนย่น",
+  "มีรอย/ตำหนิ","สีเพี้ยน","พิมพ์เหลื่อม","ขอบไม่เรียบ",
+  "ปนเปื้อน/ฝุ่น","แกนเสีย"
+];
+function initReasons(){
+  $("reasonSel").innerHTML='<option value="">— เลือกเหตุผล —</option>'
+    + REASONS.map(r=>`<option value="${r}">${r}</option>`).join("")
+    + '<option value="__other">อื่นๆ (พิมพ์เอง)</option>';
+  $("reasonSel").onchange=e=>{
+    const v=e.target.value;
+    if(v==="__other"){ $("reasonText").value=""; $("reasonText").focus(); }
+    else if(v){ $("reasonText").value=v; }
+  };
 }
 
 // ===== state =====
@@ -237,6 +261,10 @@ async function handleRollCode(code){
   }
   currentRoll=roll;
   renderDetail(roll);
+  // เติมเหตุผลจากหมายเหตุเดิมของระบบชั่ง (ถ้ามี) — แก้ไขได้
+  const oldRemark=(roll.detail&&roll.detail.remark)||"";
+  $("reasonText").value=oldRemark;
+  $("reasonSel").value=REASONS.includes(oldRemark)?oldRemark:"";
   hide("scanCard"); show("rollCard");
 }
 
@@ -257,9 +285,11 @@ function renderDetail(roll){
 // ===== บันทึกว่าหยิบม้วนไปกรอ =====
 async function confirmPick(){
   if(!currentRoll||!currentEmp) return;
+  const reason=$("reasonText").value.trim();
+  if(!reason){ toast("กรุณาระบุว่าม้วนเป็นอะไร"); $("reasonText").focus(); return; }
   $("confirmBtn").disabled=true;
   const {error}=await sb.from("roll_events").insert({
-    roll_id:currentRoll.id, employee_id:currentEmp.id, action:'กรอ'
+    roll_id:currentRoll.id, employee_id:currentEmp.id, action:'กรอ', reason
   });
   $("confirmBtn").disabled=false;
   if(error){ toast("บันทึกไม่สำเร็จ"); return; }
@@ -275,7 +305,7 @@ async function loadMine(){
   const ul=$("mine"); ul.innerHTML='<li class="muted">— กำลังโหลด —</li>';
   const since=new Date(); since.setHours(0,0,0,0);
   const {data,error}=await sb.from("roll_events")
-    .select("created_at,rolls(roll_code,roll_no,lot_no,machine_no,product_name,weight)")
+    .select("created_at,reason,rolls(roll_code,roll_no,lot_no,machine_no,product_name,weight)")
     .eq("employee_id",currentEmp.id).gte("created_at",since.toISOString())
     .order("created_at",{ascending:false}).limit(100);
   if(error){ ul.innerHTML='<li class="muted">โหลดไม่สำเร็จ</li>'; return; }
@@ -291,7 +321,8 @@ async function loadMine(){
     if(r.machine_no) parts.push(r.machine_no);
     const label=parts.length?parts.join(" · "):(r.roll_code||"");
     return `<li><span class="tag tag-in">กรอ</span><div class="ev-main">
-      <div class="emp">${label}</div><div class="time">${t}</div></div></li>`;
+      <div class="emp">${label}</div>
+      <div class="time">${t}${ev.reason?" · เหตุผล: "+ev.reason:""}</div></div></li>`;
   }).join("");
 }
 
@@ -300,6 +331,7 @@ $("whoami").onclick=()=>{
   if(confirm("ออกจากระบบ?")){ localStorage.removeItem("emp"); location.reload(); }
 };
 
+initReasons();
 loadEmployees();
 </script>
 </body>

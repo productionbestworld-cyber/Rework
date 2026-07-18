@@ -131,7 +131,7 @@ async function load(){
   $("byEmp").innerHTML='<tr><td colspan="3" class="muted">— กำลังโหลด —</td></tr>';
   $("log").innerHTML='<tr><td colspan="5" class="muted">— กำลังโหลด —</td></tr>';
   let q=sb.from("roll_events")
-    .select("created_at,employees(name),rolls(roll_code,roll_no,lot_no,machine_no,product_name,weight,customer,detail)")
+    .select("created_at,reason,employees(name),rolls(roll_code,roll_no,lot_no,machine_no,product_name,weight,customer,detail)")
     .eq("action","กรอ").order("created_at",{ascending:false}).limit(2000);
   const s=sinceISO(range); if(s) q=q.gte("created_at",s);
   const {data,error}=await q;
@@ -150,18 +150,18 @@ async function load(){
 
   // หัวตาราง: # / บันทึกเมื่อ / พนักงาน / แล้วตามด้วยทุก field ของม้วน
   $("logHead").innerHTML =
-    '<th class="idx">#</th><th>บันทึกเมื่อ</th><th>พนักงาน</th>'
+    '<th class="idx">#</th><th>บันทึกเมื่อ</th><th>พนักงาน</th><th>เหตุผล (ม้วนเป็นอะไร)</th>'
     + ROLL_FIELDS.map(([,label])=>`<th>${label}</th>`).join("");
 
   const dash=v=>(v==null||v==="")?"–":v;
-  const colspan=3+ROLL_FIELDS.length;
+  const colspan=4+ROLL_FIELDS.length;
   $("log").innerHTML = data.length
     ? data.map((ev,i)=>{
         const d=new Date(ev.created_at);
         const when=d.toLocaleString("th-TH",{dateStyle:"short",timeStyle:"short"});
         const cells=ROLL_FIELDS.map(([k])=>`<td>${dash(fmtVal(k,fld(ev,k)))}</td>`).join("");
         return `<tr><td class="idx">${i+1}</td><td class="c">${when}</td>`
-          +`<td>${ev.employees?.name||"?"}</td>${cells}</tr>`;
+          +`<td>${ev.employees?.name||"?"}</td><td>${dash(ev.reason)}</td>${cells}</tr>`;
       }).join("")
     : `<tr><td colspan="${colspan}" class="muted">— ไม่มีข้อมูล —</td></tr>`;
 }
@@ -169,7 +169,7 @@ async function load(){
 // export เป็น CSV (เปิดใน Excel ได้ ภาษาไทยไม่เพี้ยนด้วย BOM)
 function exportCSV(){
   if(!rows.length){ alert("ไม่มีข้อมูลให้ดาวน์โหลด"); return; }
-  const head=["ลำดับ","วันที่","เวลา","พนักงาน",...ROLL_FIELDS.map(([,l])=>l)];
+  const head=["ลำดับ","วันที่","เวลา","พนักงาน","เหตุผล (ม้วนเป็นอะไร)",...ROLL_FIELDS.map(([,l])=>l)];
   const esc=v=>`"${String(v??"").replace(/"/g,'""')}"`;
   const lines=[head.map(esc).join(",")];
   rows.forEach((ev,i)=>{
@@ -177,7 +177,7 @@ function exportCSV(){
     lines.push([i+1,
       d.toLocaleDateString("th-TH"),
       d.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"}),
-      ev.employees?.name||"",
+      ev.employees?.name||"", ev.reason||"",
       ...ROLL_FIELDS.map(([k])=>fmtVal(k,fld(ev,k)))
     ].map(esc).join(","));
   });
